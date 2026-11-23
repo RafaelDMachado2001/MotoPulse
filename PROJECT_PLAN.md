@@ -15,6 +15,9 @@ Construir um aplicativo Android offline-first para registrar a Kawasaki Ninja ZX
 - Bluetooth Rideology: investigação separada, somente leitura no início.
 - IA: interpreta métricas e anomalias calculadas; não substitui medições determinísticas.
 - Segurança: nenhuma escrita na ECU, painel, ABS, KTRC ou modos de pilotagem no MVP.
+- Dispositivo de referência: Samsung Galaxy S25 Ultra, Android 17, One UI 9.0.
+- Dados reais de viagens: ficam fora do Git; o repositório usa fixtures sintéticas ou anonimizadas.
+- Persistência inicial: local, com exportação manual; backup criptografado será tratado em fase posterior.
 
 ## Fases
 
