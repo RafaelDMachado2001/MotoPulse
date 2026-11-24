@@ -1,4 +1,4 @@
-# Protocolo de execução — ZX-4R Intelligence
+# Protocolo de execução — MotoPulse
 
 ## Organização
 
@@ -83,7 +83,7 @@ NEXT: próximo passo recomendado
 ## Template de especificação para o Orca
 
 ```text
-Projeto: ZX-4R Intelligence
+Projeto: MotoPulse
 Fase: F<n> — <nome>
 Objetivo: <resultado verificável>
 Entradas: <arquivos, decisões e dados>
