@@ -1,4 +1,4 @@
-# ZX-4R Intelligence
+# MotoPulse
 
 Aplicativo para acompanhar viagens, manutenção e comportamento operacional de uma Kawasaki Ninja ZX-4R 2026.
 

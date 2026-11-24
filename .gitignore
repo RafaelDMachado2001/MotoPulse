@@ -1,0 +1,46 @@
+# Dependencies and builds
+node_modules/
+dist/
+build/
+.expo/
+.gradle/
+android/.cxx/
+coverage/
+*.apk
+*.aab
+
+# Secrets
+.env
+.env.*
+*.keystore
+*.jks
+*.[pP][eE][mM]
+*.[pP]12
+*.key
+google-services.json
+local.properties
+
+# Local databases
+*.[dD][bB]
+*.[dD][bB]-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.realm
+
+# Real telemetry, routes and exports
+*.[cC][sS][vV]
+*.[gG][pP][xX]
+*.[fF][iI][tT]
+*.[kK][mM][lL]
+*.[kK][mM][zZ]
+*.[tT][cC][xX]
+*.geojson
+*.[zZ][iI][pP]
+*.log
+
+# Synthetic fixtures
+!tests/
+!tests/fixtures/
+!tests/fixtures/**/*.csv
