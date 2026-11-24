@@ -9,7 +9,7 @@ Este documento é o contrato do esquema local. Os blocos `sql` executam na ordem
 3. **Offset.** Todo instante de evento (leitura, manutenção, viagem, segmento, ponto, sessão, período de relatório) tem o offset original, `+HH:MM` ou `-HH:MM`. Instantes de auditoria (`created_at`, `updated_at`, `imported_at`, `calculated_at` e semelhantes) são só UTC. Hora local sem fuso conhecido nunca é convertida: fica em `telemetry_session.started_local`, e `started_at` fica ausente com motivo.
 4. **Unidades canônicas.** Metros, segundos, m/s, graus Celsius, rpm e km/L como lido. Dinheiro é centavo inteiro mais código de moeda de três letras. L/100 km é apenas derivado, em `metric_result`.
 5. **Ausência.** Medição ou valor monetário ausente é NULL com motivo, nunca zero. O motivo é um código `snake_case` em coluna `*_missing_reason` ou, nas tabelas largas, em `missing_fields_json` (objeto campo -> código). O motivo existe se e somente se o valor falta.
-6. **Opcionais estruturais, sem motivo.** `vin`, `note`, `notes`, `part_number`, FKs de vínculo (`trip_id`, `session_id`, `sample_id`, `plan_item_id`, `corrects_reading_id`, `baseline_profile_id`, `metric_result_id`), `interval_m` e `interval_days` (ao menos um), períodos de relatório fora do escopo `period` e os campos de conclusão de `telemetry_parse_run`, `trip_segment` e `raw_deletion`, controlados pelo estado. `row_number` e `raw_values_json` só existem em amostras vindas de arquivo.
+6. **Opcionais estruturais, sem motivo.** `vin`, `nickname`, `note`, `notes`, `part_number`, FKs de vínculo (`trip_id`, `session_id`, `sample_id`, `plan_item_id`, `corrects_reading_id`, `baseline_profile_id`, `metric_result_id`), `interval_m` e `interval_days` (ao menos um), períodos de relatório fora do escopo `period` e os campos de conclusão de `telemetry_parse_run`, `trip_segment` e `raw_deletion`, controlados pelo estado. `row_number` e `raw_values_json` só existem em amostras vindas de arquivo.
 7. **Bruto e derivado.** Bruto: arquivo original, `telemetry_import`, `telemetry_sample` e `location_point`. Bruto não é alterado nem apagado, exceto pela exclusão definitiva autorizada (decisão D2 do ADR 0002). Derivados têm versão, não são alterados e podem ser recalculados.
 8. **Conexão.** Toda conexão liga `foreign_keys` e `recursive_triggers`, que o SQLite não persiste. Sem `recursive_triggers`, `INSERT OR REPLACE` apagaria bruto sem disparar o gatilho de exclusão. `journal_mode=WAL` é ligado pelo aplicativo. T1.17 verifica os três.
 
@@ -23,7 +23,7 @@ PRAGMA user_version = 1;
 
 ## Garagem e odômetro
 
-A moto não tem apelido: pela decisão D3, apelido de veículo só existe no arquivo bruto. `is_demo` separa dados de demonstração dos reais.
+`nickname` é opcional e digitado pela pessoa no aplicativo. Nunca é preenchido nem sugerido a partir do CSV: o apelido do veículo no CSV só existe no arquivo bruto (D3). `is_demo` separa dados de demonstração dos reais.
 
 Uma leitura é efetiva quando nenhuma outra a corrige. Leituras efetivas não regridem no tempo; a correção substitui a leitura apontada e exige nota. Leituras não são alteradas nem apagadas. Troca de painel com reinício da contagem não está modelada: [A VERIFICAR].
 
@@ -34,6 +34,7 @@ CREATE TABLE motorcycle (
   model TEXT NOT NULL,
   year INTEGER NOT NULL CHECK (year BETWEEN 1900 AND 2200),
   vin TEXT UNIQUE,
+  nickname TEXT,
   is_demo INTEGER NOT NULL DEFAULT 0 CHECK (is_demo IN (0, 1)),
   created_at TEXT NOT NULL CHECK (
     created_at GLOB '???????????????????.[0-9][0-9][0-9]Z'
@@ -253,7 +254,7 @@ END;
 
 ## Viagem e GPS do aplicativo
 
-Viagem criada de importação pode não ter instante UTC conhecido; nesse caso, e só nele, aceita-se motivo em vez da data. O banco não exige fim posterior ao início, porque o relógio pode ser ajustado durante a viagem; a duração usa `monotonic_ms`. O segmento fecha em toda pausa ou interrupção: no máximo um aberto por viagem. Transições de estado são aplicadas pelo aplicativo (T2.8). Distâncias e duração não ficam em `trip`: são derivados em `metric_result`.
+Viagem criada de importação pode não ter instante UTC conhecido; nesse caso, e só nele, aceita-se motivo em vez da data. O banco não exige fim posterior ao início, porque o relógio pode ser ajustado durante a viagem; a duração usa `monotonic_ms`. O segmento fecha em toda pausa ou interrupção: no máximo um aberto por viagem. O banco recusa transição de estado fora da tabela de `architecture.md`; as guardas (permissão, confirmação) são do aplicativo (T2.8). `finished` e `cancelled` são finais. Viagem não é apagada nem substituída. Distâncias e duração não ficam em `trip`: são derivados em `metric_result`.
 
 `location_point` guarda apenas GPS gravado pelo aplicativo. **O GPS do CSV mora somente em `telemetry_sample`**, e nunca é copiado para cá.
 
@@ -386,6 +387,34 @@ BEGIN
   SELECT RAISE(ABORT, 'demo data must not mix with real data');
 END;
 
+CREATE TRIGGER trip_transition
+BEFORE UPDATE OF status ON trip
+WHEN NEW.status <> OLD.status
+  AND OLD.status || '>' || NEW.status NOT IN (
+    'draft>recording',
+    'draft>cancelled',
+    'recording>paused',
+    'recording>interrupted',
+    'recording>finished',
+    'recording>cancelled',
+    'paused>recording',
+    'paused>finished',
+    'paused>cancelled',
+    'interrupted>recording',
+    'interrupted>paused',
+    'interrupted>finished',
+    'interrupted>cancelled'
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'invalid trip transition');
+END;
+
+CREATE TRIGGER trip_no_delete
+BEFORE DELETE ON trip
+BEGIN
+  SELECT RAISE(ABORT, 'trip is permanent');
+END;
+
 CREATE TRIGGER trip_origin_fixed
 BEFORE UPDATE OF motorcycle_id, source ON trip
 BEGIN
@@ -401,7 +430,7 @@ END;
 
 ## Importação e telemetria
 
-`telemetry_import` identifica os bytes: um hash SHA-256, único no banco. Reimportar os mesmos bytes, mesmo renomeados, reutiliza o registro. A unicidade vale para todo o banco: os mesmos bytes não entram em outra moto. `telemetry_parse_run` é uma leitura desses bytes por uma versão do parser, e só ela guarda versão, estado, encoding, delimitador, regra decimal e metadados. Leitura `failed` pode voltar a `pending`; `parsed` e `rejected` são finais. Cada leitura de CSV gera no máximo uma sessão.
+`telemetry_import` identifica os bytes: um hash SHA-256, único no banco. Reimportar os mesmos bytes, mesmo renomeados, reutiliza o registro. A unicidade vale para todo o banco: os mesmos bytes não entram em outra moto. Moto de demonstração não recebe importação: seus dados usam sessão `demo`. `telemetry_parse_run` é uma leitura desses bytes por uma versão do parser, e só ela guarda versão, estado, encoding, delimitador, regra decimal e metadados. Leitura `failed` pode voltar a `pending`; `parsed` e `rejected` são finais. Cada leitura de CSV gera no máximo uma sessão.
 
 `decimal_rules_json` diz o separador por coluna. No único arquivo observado, latitude e longitude usam vírgula e as demais colunas usam ponto; não se supõe isso para outros arquivos.
 
@@ -594,6 +623,13 @@ CREATE INDEX ix_session_trip ON telemetry_session (trip_id);
 CREATE INDEX ix_sample_session_elapsed ON telemetry_sample (session_id, elapsed_ms);
 CREATE INDEX ix_issue_run_row ON sample_issue (parse_run_id, row_number);
 
+CREATE TRIGGER import_not_demo
+BEFORE INSERT ON telemetry_import
+WHEN (SELECT is_demo FROM motorcycle WHERE id = NEW.motorcycle_id) = 1
+BEGIN
+  SELECT RAISE(ABORT, 'demo data must not mix with real data');
+END;
+
 CREATE TRIGGER parse_run_final
 BEFORE UPDATE ON telemetry_parse_run
 WHEN OLD.status IN ('parsed', 'rejected')
@@ -669,11 +705,11 @@ END;
 
 1. A interface mostra o alvo e o que será apagado, e pede que a pessoa digite a frase de confirmação.
 2. O aplicativo insere `raw_deletion` com estado `authorized`. O alvo precisa existir; para importação, o hash precisa coincidir. `expected_rows` registra quantas linhas brutas existem e é conferido pelo banco.
-3. Em uma transação, apaga os derivados que apontam para o alvo e depois o bruto. O gatilho só libera o bruto desse alvo.
+3. Em uma transação, apaga os derivados que apontam para o alvo e depois o bruto. O gatilho só libera o bruto desse alvo. Enquanto a autorização está aberta, o alvo não recebe bruto, leitura, sessão, segmento nem derivado novo.
 4. Na exclusão de importação, remove o arquivo bruto e seu material auxiliar.
 5. Marca `completed`, aceito só se o bruto do alvo não existe mais e `deleted_rows` é igual a `expected_rows`. Cancelar só é aceito se nada foi apagado. O registro nunca é alterado depois nem apagado.
 
-Se o aplicativo morrer no meio, a autorização aberta é retomada na próxima abertura, com nova confirmação na tela, ou cancelada se nada foi apagado. O alvo `trip` apaga os pontos e mantém a viagem. Não há exclusão por prazo: retenção segue aberta.
+Se o aplicativo morrer no meio, a autorização aberta é retomada na próxima abertura, com nova confirmação na tela, ou cancelada se nada foi apagado. O alvo `trip` apaga os pontos e mantém a viagem, que depois de concluída a exclusão não recebe mais pontos nem segmentos. Não há exclusão por prazo: retenção segue aberta.
 
 ```sql
 CREATE TABLE raw_deletion (
@@ -791,6 +827,17 @@ BEGIN
   SELECT RAISE(ABORT, 'raw data still exists');
 END;
 
+CREATE TRIGGER raw_deletion_no_derived_left
+BEFORE UPDATE ON raw_deletion
+WHEN NEW.status = 'completed' AND NEW.target_kind = 'trip' AND (
+  EXISTS (SELECT 1 FROM metric_result WHERE trip_id = NEW.target_id)
+  OR EXISTS (SELECT 1 FROM finding WHERE trip_id = NEW.target_id)
+  OR EXISTS (SELECT 1 FROM report WHERE trip_id = NEW.target_id)
+)
+BEGIN
+  SELECT RAISE(ABORT, 'derived data still exists');
+END;
+
 CREATE TRIGGER raw_deletion_cancel
 BEFORE UPDATE ON raw_deletion
 WHEN NEW.status = 'cancelled' AND (
@@ -822,6 +869,102 @@ CREATE TRIGGER raw_deletion_no_delete
 BEFORE DELETE ON raw_deletion
 BEGIN
   SELECT RAISE(ABORT, 'deletion record is permanent');
+END;
+
+CREATE VIEW open_deletion_session AS
+SELECT s.id AS session_id, s.trip_id AS trip_id
+FROM raw_deletion AS d
+JOIN telemetry_parse_run AS r ON r.import_id = d.target_id
+JOIN telemetry_session AS s ON s.parse_run_id = r.id
+WHERE d.target_kind = 'telemetry_import' AND d.status = 'authorized';
+
+CREATE VIEW open_deletion_trip AS
+SELECT target_id AS trip_id
+FROM raw_deletion
+WHERE target_kind = 'trip' AND status = 'authorized'
+UNION
+SELECT trip_id
+FROM open_deletion_session
+WHERE trip_id IS NOT NULL;
+
+CREATE VIEW open_deletion_motorcycle AS
+SELECT t.motorcycle_id AS motorcycle_id
+FROM raw_deletion AS d
+JOIN trip AS t ON t.id = d.target_id
+WHERE d.target_kind = 'trip' AND d.status = 'authorized'
+UNION
+SELECT i.motorcycle_id
+FROM raw_deletion AS d
+JOIN telemetry_import AS i ON i.id = d.target_id
+WHERE d.target_kind = 'telemetry_import' AND d.status = 'authorized';
+
+CREATE TRIGGER location_insert_open_deletion
+BEFORE INSERT ON location_point
+WHEN EXISTS (
+  SELECT 1
+  FROM raw_deletion AS d
+  JOIN trip_segment AS s ON s.trip_id = d.target_id
+  WHERE s.id = NEW.segment_id AND d.target_kind = 'trip' AND d.status <> 'cancelled'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'target has a deletion');
+END;
+
+CREATE TRIGGER segment_insert_open_deletion
+BEFORE INSERT ON trip_segment
+WHEN EXISTS (
+  SELECT 1 FROM raw_deletion AS d
+  WHERE d.target_id = NEW.trip_id AND d.target_kind = 'trip' AND d.status <> 'cancelled'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'target has a deletion');
+END;
+
+CREATE TRIGGER parse_run_insert_open_deletion
+BEFORE INSERT ON telemetry_parse_run
+WHEN EXISTS (
+  SELECT 1 FROM raw_deletion AS d
+  WHERE d.target_id = NEW.import_id
+    AND d.target_kind = 'telemetry_import'
+    AND d.status = 'authorized'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'target has a deletion');
+END;
+
+CREATE TRIGGER session_insert_open_deletion
+BEFORE INSERT ON telemetry_session
+WHEN EXISTS (
+  SELECT 1
+  FROM raw_deletion AS d
+  JOIN telemetry_parse_run AS r ON r.import_id = d.target_id
+  WHERE r.id = NEW.parse_run_id
+    AND d.target_kind = 'telemetry_import'
+    AND d.status = 'authorized'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'target has a deletion');
+END;
+
+CREATE TRIGGER sample_insert_open_deletion
+BEFORE INSERT ON telemetry_sample
+WHEN EXISTS (
+  SELECT 1 FROM open_deletion_session WHERE session_id = NEW.session_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'target has a deletion');
+END;
+
+CREATE TRIGGER parse_run_no_delete
+BEFORE DELETE ON telemetry_parse_run
+WHEN NOT EXISTS (
+  SELECT 1 FROM raw_deletion AS d
+  WHERE d.target_id = OLD.import_id
+    AND d.target_kind = 'telemetry_import'
+    AND d.status = 'authorized'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'parse run deletion not authorized');
 END;
 
 CREATE TRIGGER location_no_update
@@ -941,6 +1084,44 @@ BEGIN
   SELECT RAISE(ABORT, 'valid gps needs accuracy (app) or coordinates (csv)');
 END;
 
+CREATE TRIGGER gps_evaluation_insert_open_deletion
+BEFORE INSERT ON gps_evaluation
+WHEN EXISTS (
+  SELECT 1
+  FROM location_point AS p
+  JOIN trip_segment AS s ON s.id = p.segment_id
+  JOIN raw_deletion AS d ON d.target_id = s.trip_id
+  WHERE p.id = NEW.location_point_id AND d.target_kind = 'trip' AND d.status = 'authorized'
+)
+OR EXISTS (
+  SELECT 1
+  FROM telemetry_sample AS a
+  JOIN open_deletion_session AS o ON o.session_id = a.session_id
+  WHERE a.id = NEW.sample_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'target has a deletion');
+END;
+
+CREATE TRIGGER gps_evaluation_no_delete
+BEFORE DELETE ON gps_evaluation
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM location_point AS p
+  JOIN trip_segment AS s ON s.id = p.segment_id
+  JOIN raw_deletion AS d ON d.target_id = s.trip_id
+  WHERE p.id = OLD.location_point_id AND d.target_kind = 'trip' AND d.status = 'authorized'
+)
+AND NOT EXISTS (
+  SELECT 1
+  FROM telemetry_sample AS a
+  JOIN open_deletion_session AS o ON o.session_id = a.session_id
+  WHERE a.id = OLD.sample_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'derived deletion not authorized');
+END;
+
 CREATE TRIGGER gps_evaluation_no_update
 BEFORE UPDATE ON gps_evaluation
 BEGIN
@@ -949,6 +1130,18 @@ END;
 ```
 
 ## Derivados
+
+Derivado não é alterado, apagado nem substituído por `INSERT OR REPLACE` (com `recursive_triggers` ligado, regra geral 8). A única exclusão possível ocorre com autorização aberta em `raw_deletion`:
+
+| Derivado | Pode ser apagado quando |
+|---|---|
+| `gps_evaluation` | seu ponto é da viagem alvo, ou sua amostra é da importação alvo |
+| `metric_result` | é da viagem alvo, de sessão da importação alvo ou de viagem vinculada a essa sessão |
+| `finding` | como a métrica, por vínculo direto ou pela métrica citada |
+| `report` | é da viagem coberta; relatórios de período e manutenção, se a moto tem autorização aberta |
+| `baseline_profile` | nunca: é agregado, sem referência a linhas brutas; nova versão substitui a anterior no uso |
+
+Enquanto a autorização está aberta não entra derivado novo do alvo, o que também impede a substituição nessa janela. Escolher quais relatórios de período contêm o alvo é do aplicativo (T3.17, T7.3).
 
 `calculation_key` é o SHA-256 da entrada normalizada (identificadores e hashes das fontes, versão da regra de GPS e parâmetros). Mesma entrada e mesma `method_version` produzem a mesma chave: recalcular não duplica. Mudou a entrada ou o método, nasce outra linha e a anterior permanece.
 
@@ -1149,6 +1342,80 @@ BEFORE UPDATE ON report
 BEGIN
   SELECT RAISE(ABORT, 'derived data is versioned');
 END;
+
+CREATE TRIGGER metric_insert_open_deletion
+BEFORE INSERT ON metric_result
+WHEN EXISTS (SELECT 1 FROM open_deletion_trip WHERE trip_id = NEW.trip_id)
+OR EXISTS (SELECT 1 FROM open_deletion_session WHERE session_id = NEW.session_id)
+BEGIN
+  SELECT RAISE(ABORT, 'target has a deletion');
+END;
+
+CREATE TRIGGER metric_no_delete
+BEFORE DELETE ON metric_result
+WHEN NOT EXISTS (SELECT 1 FROM open_deletion_trip WHERE trip_id = OLD.trip_id)
+AND NOT EXISTS (SELECT 1 FROM open_deletion_session WHERE session_id = OLD.session_id)
+BEGIN
+  SELECT RAISE(ABORT, 'derived deletion not authorized');
+END;
+
+CREATE TRIGGER finding_insert_open_deletion
+BEFORE INSERT ON finding
+WHEN EXISTS (SELECT 1 FROM open_deletion_trip WHERE trip_id = NEW.trip_id)
+OR EXISTS (SELECT 1 FROM open_deletion_session WHERE session_id = NEW.session_id)
+OR EXISTS (
+  SELECT 1
+  FROM metric_result AS m
+  WHERE m.id = NEW.metric_result_id
+    AND (
+      m.trip_id IN (SELECT trip_id FROM open_deletion_trip)
+      OR m.session_id IN (SELECT session_id FROM open_deletion_session)
+    )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'target has a deletion');
+END;
+
+CREATE TRIGGER finding_no_delete
+BEFORE DELETE ON finding
+WHEN NOT EXISTS (SELECT 1 FROM open_deletion_trip WHERE trip_id = OLD.trip_id)
+AND NOT EXISTS (SELECT 1 FROM open_deletion_session WHERE session_id = OLD.session_id)
+AND NOT EXISTS (
+  SELECT 1
+  FROM metric_result AS m
+  WHERE m.id = OLD.metric_result_id
+    AND (
+      m.trip_id IN (SELECT trip_id FROM open_deletion_trip)
+      OR m.session_id IN (SELECT session_id FROM open_deletion_session)
+    )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'derived deletion not authorized');
+END;
+
+CREATE TRIGGER report_insert_open_deletion
+BEFORE INSERT ON report
+WHEN EXISTS (SELECT 1 FROM open_deletion_motorcycle WHERE motorcycle_id = NEW.motorcycle_id)
+BEGIN
+  SELECT RAISE(ABORT, 'target has a deletion');
+END;
+
+CREATE TRIGGER report_no_delete
+BEFORE DELETE ON report
+WHEN NOT EXISTS (SELECT 1 FROM open_deletion_trip WHERE trip_id = OLD.trip_id)
+AND (
+  OLD.scope = 'trip'
+  OR NOT EXISTS (SELECT 1 FROM open_deletion_motorcycle WHERE motorcycle_id = OLD.motorcycle_id)
+)
+BEGIN
+  SELECT RAISE(ABORT, 'derived deletion not authorized');
+END;
+
+CREATE TRIGGER baseline_no_delete
+BEFORE DELETE ON baseline_profile
+BEGIN
+  SELECT RAISE(ABORT, 'derived data is versioned');
+END;
 ```
 
 ## Regras que o banco não garante
@@ -1157,10 +1424,122 @@ END;
 |---|---|---|
 | Formato UUID | aplicativo | T1.16 |
 | Pragmas em toda conexão | adaptador SQLite | T1.17 |
-| Transições da viagem | aplicação | T2.8 |
+| Guardas das transições (permissão, confirmação) | aplicação | T2.8 |
+| Apelido do cadastro nunca vir do CSV | importador | T3.16 |
+| Quais relatórios de período contêm o alvo da exclusão | aplicação | T3.17, T7.3 |
 | Limiares de validade do GPS | domínio | T2.10, T3.11 |
 | Prioridade do GPS do aplicativo | aplicação | T3.12 |
 | Identidade ausente em textos livres, logs e exportação | importador e exportador | T3.16, T7.4, T7.5 |
 | Igualdade entre hash registrado e bytes do arquivo | importador | T3.1 |
 | Evidência não vazia e verdadeira nos achados | domínio | T4.6 |
 | Remoção do arquivo físico na exclusão definitiva | adaptador de arquivos | T3.17 |
+
+## Justificativa de cada objeto
+
+Objeto sem requisito ou decisão não entra no esquema. Índices só aceleram uma consulta ou garantem unicidade.
+
+| Tabela | Justificativa |
+|---|---|
+| `motorcycle` | RF-01, D3 |
+| `odometer_reading` | RF-05, A4 |
+| `maintenance_record` | RF-02, A3, A4 |
+| `maintenance_plan` | RF-04, A4 |
+| `plan_item` | RF-04, A4 |
+| `maintenance_item` | RF-03, A3, A4 |
+| `record_plan` | RF-04, A4 |
+| `trip` | RF-07, A5 |
+| `trip_segment` | RF-08, A5 |
+| `location_point` | RF-09, A8 |
+| `telemetry_import` | RF-10, A8 |
+| `telemetry_parse_run` | RNF-03, A8 |
+| `telemetry_session` | RF-11, RF-27, A6 |
+| `telemetry_sample` | RF-12, RF-16, A7 |
+| `sample_issue` | RF-10 |
+| `raw_deletion` | RF-25, D2 |
+| `gps_evaluation` | RF-09, RF-23, D1, P3 |
+| `metric_result` | RF-12, RF-19, RNF-03, A9 |
+| `baseline_profile` | RF-13 |
+| `finding` | RF-13 |
+| `report` | RF-14, RF-21 |
+
+| Gatilho | Justificativa |
+|---|---|
+| `odometer_no_regression` | RF-05, A4 |
+| `odometer_no_update` | RF-05, A4 |
+| `odometer_no_delete` | RF-05, A4 |
+| `motorcycle_demo_fixed` | RF-06 |
+| `item_plan_same_moto_insert` | RF-04, A4 |
+| `item_plan_fixed` | RF-04, A4 |
+| `record_moto_fixed` | RF-04, A4 |
+| `plan_moto_fixed` | RF-04, A4 |
+| `plan_item_plan_fixed` | RF-04, A4 |
+| `trip_demo_match` | RF-06 |
+| `trip_transition` | RF-07, A5 |
+| `trip_no_delete` | RF-07, RF-25, D2 |
+| `trip_origin_fixed` | RNF-08, D2 |
+| `segment_trip_fixed` | RNF-08, D2 |
+| `import_not_demo` | RF-06 |
+| `parse_run_final` | RNF-03, A8 |
+| `parse_run_origin_fixed` | RNF-08, D2 |
+| `parse_run_metadata_insert` | RNF-09, D3 |
+| `parse_run_metadata_update` | RNF-09, D3 |
+| `session_demo_match` | RF-06 |
+| `session_origin_fixed` | RNF-08, D2 |
+| `sample_row_matches_source` | RF-10, A7 |
+| `sample_no_identity` | RNF-09, D3 |
+| `raw_deletion_insert` | RF-25, D2 |
+| `raw_deletion_count` | RF-25, D2 |
+| `raw_deletion_update` | RF-25, D2 |
+| `raw_deletion_complete` | RF-25, D2 |
+| `raw_deletion_no_derived_left` | RF-25, D2 |
+| `raw_deletion_cancel` | RF-25, D2 |
+| `raw_deletion_no_delete` | RF-25, D2 |
+| `location_insert_open_deletion` | RF-25, D2 |
+| `segment_insert_open_deletion` | RF-25, D2 |
+| `parse_run_insert_open_deletion` | RF-25, D2 |
+| `session_insert_open_deletion` | RF-25, D2 |
+| `sample_insert_open_deletion` | RF-25, D2 |
+| `parse_run_no_delete` | RNF-03, A8 |
+| `location_no_update` | RNF-03, RNF-08, D2 |
+| `location_no_delete` | RNF-03, RNF-08, D2 |
+| `sample_no_update` | RNF-03, RNF-08, D2 |
+| `sample_no_delete` | RNF-03, RNF-08, D2 |
+| `import_no_update` | RNF-03, RNF-08, D2 |
+| `import_no_delete` | RNF-03, RNF-08, D2 |
+| `gps_valid_needs_data` | RF-09, RF-23, D1 |
+| `gps_evaluation_insert_open_deletion` | RF-25, D2 |
+| `gps_evaluation_no_delete` | RNF-03, A8 |
+| `gps_evaluation_no_update` | RNF-03, A8 |
+| `metric_no_update` | RNF-03, A8 |
+| `baseline_no_update` | RNF-03, A8 |
+| `finding_no_update` | RNF-03, A8 |
+| `report_no_update` | RNF-03, A8 |
+| `metric_insert_open_deletion` | RF-25, D2 |
+| `metric_no_delete` | RNF-03, A8 |
+| `finding_insert_open_deletion` | RF-25, D2 |
+| `finding_no_delete` | RNF-03, A8 |
+| `report_insert_open_deletion` | RF-25, D2 |
+| `report_no_delete` | RNF-03, A8 |
+| `baseline_no_delete` | RNF-03, A8 |
+
+| Visão | Justificativa |
+|---|---|
+| `open_deletion_session` | RF-25, D2 |
+| `open_deletion_trip` | RF-25, D2 |
+| `open_deletion_motorcycle` | RF-25, D2 |
+
+| Índice | Justificativa |
+|---|---|
+| `ix_odometer_moto_time` | RF-05 |
+| `ix_record_moto_time` | RF-02 |
+| `ix_item_record` | RF-03 |
+| `ux_trip_active` | RF-07 |
+| `ix_trip_moto_time` | RF-21 |
+| `ux_segment_open` | RF-07, A5 |
+| `ix_session_moto_time` | RF-21 |
+| `ix_session_trip` | RF-11 |
+| `ix_sample_session_elapsed` | RF-20 |
+| `ix_issue_run_row` | RF-10 |
+| `ux_raw_deletion_open` | RF-25, D2 |
+| `ux_metric_trip` | RF-12, RNF-03 |
+| `ux_metric_session` | RF-12, RNF-03 |
