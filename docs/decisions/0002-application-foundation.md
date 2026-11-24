@@ -42,3 +42,30 @@ Offline é o caminho principal, com maior complexidade de migrations e recupera�
 | Limites/privacidade BLE | usuário | **envio de comando potencialmente irreversível** | F6 | somente leitura, lista permitida |
 
 Backup criptografado continua posterior conforme ADR 0001. Spikes pré-F1 são documentados, não executados aqui.
+
+## Bibliotecas SQLite — proposta, sem instalação
+
+`expo-sqlite`, `react-native-sqlite-storage` e `op-sqlite` são candidatas. Comparar: suporte a migrations explícitas, transações, WAL, foreign keys, STRICT, TypeScript, Android mínimo (a definir), manutenção e observabilidade; versões e suporte exato ficam [A VERIFICAR]. **Proposta:** começar com Expo SQLite se os testes de schema atenderem; caso contrário avaliar RN SQLite ou op-sqlite. Nenhuma escolha é final nesta fase.
+
+## Escala de reversibilidade
+
+Alta = troca sem migração de dados; média = migração/configuração; baixa = retrabalho significativo; irreversível = publicação, distribuição, envio de dados ou perda de bruto. “Média/alta” nas tabelas anteriores deve ser lida por esta escala.
+
+## Divergências arbitradas
+
+| Tema | Análise/plano divergentes | Arbitragem |
+|---|---|---|
+| CSV | modelo presumido versus estrutura desconhecida | usar fatos de csv-structure.md; desconhecidos [A VERIFICAR] |
+| Amostras | larga versus longa | larga + JSON extra, com bruto imutável |
+| Distância | GPS, roda e Rideology | ADR 0001: GPS válido oficial; roda/Rideology comparativas |
+| Exportação | posterior versus perda de dados | produto inclui; fase aberta, recomendação F1 |
+| Fixture | inexistente versus necessária | fixture sintética de 14 colunas atribuída a F1/F3, T3.5 |
+
+## Aberturas adicionais
+
+| ID | Questão | Dono | Reversibilidade | Prazo/recomendação |
+|---|---|---|---|---|
+| D1 | GPS CSV congelado/salto/sem sinal entra na distância oficial? Prioridade se houver GPS app? ADR 0001 fixa GPS válido, mas não cobre esta origem | usuário | média | F3; manter comparativa até decisão |
+| D2 | Exclusão apaga bruto? | usuário | irreversível se apagar | F1/F7; recomendar RESTRICT |
+| D3 | Nome de usuário/apelido no bruto | usuário | alta; vazamento é irreversível | F3; proposta: bruto local, fora de logs/exportação/IA |
+| Manutenção/odômetro/centavos | preservar registros, correções e centavos+moeda | usuário/equipe | baixa após dados | F1; manter schema proposto |

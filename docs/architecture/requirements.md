@@ -17,6 +17,11 @@
 | RF-13 | Emitir findings classificados com evidência | F4 | T4.1 |
 | RF-14 | Gerar relatório com versão, evidência e incerteza | F5 | T5.1 |
 | RF-15 | Exportar manualmente dados conforme fase decidida | F1/F7 | T7.1 |
+| RF-16 | Ler fixture sintética com as 14 colunas do ADR 0001, preservando constantes e N | F1/F3 | T3.5 |
+| RF-17 | Exibir navegação entre garagem, manutenção, viagens e relatórios | F1 | T1.10 |
+| RF-18 | Amostrar GPS adaptativamente e classificar paradas | F2 | T2.4 |
+| RF-19 | Gerar gráficos de métricas importadas | F3 | T3.6 |
+| RF-20 | Gerar relatórios semanal/mensal e perguntas sobre histórico | F5 | T5.2 |
 | RNF-01 | SQLite local é fonte de verdade e transações não expõem estado parcial | F1 | T1.7 |
 | RNF-02 | IDs UUID, UTC/offset, unidades canônicas e ausência explícita | F0/F1 | T0.3 |
 | RNF-03 | Bruto imutável e derivados recalculáveis/versionados | F3 | T3.4 |
