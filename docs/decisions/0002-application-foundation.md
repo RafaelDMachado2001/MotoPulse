@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposto para revisão, exceto as decisões D1, D2 e D3, aceitas pelo usuário em 2026-11-24. Em conflito, o ADR 0001 prevalece.
+Aceito pelo usuário em 2026-11-24 como fundação da F0. P1, P2 e P3 continuam propostas até os spikes, e as decisões abertas seguem abertas. Em conflito, o ADR 0001 prevalece.
 
 ## Contexto
 
@@ -48,6 +48,15 @@ Usada em todas as decisões deste documento.
 - **Alternativas:** guardar no banco e ocultar na interface; remover também do bruto, o que quebraria o hash.
 - **Consequência:** o banco aceita apenas metadados de uma lista permitida. O cadastro da moto tem apelido opcional, digitado no aplicativo, que nunca é preenchido a partir do CSV. O arquivo bruto não é exportado com identidade.
 - **Reversibilidade:** a regra é fácil de mudar; um vazamento é **IRREVERSÍVEL**.
+- **Dono:** usuário.
+
+### D4 — Aprovação de PR e de avanço de fase
+
+- **Decisão:** o usuário aprova os PRs e o avanço de cada fase.
+- **Data:** 2026-11-24.
+- **Alternativas:** aprovação por outra pessoa; avanço automático quando os critérios passam.
+- **Consequência:** nenhuma integração nem fase avança sem aprovação explícita.
+- **Reversibilidade:** fácil.
 - **Dono:** usuário.
 
 ## Decisões arbitradas para a F0
@@ -185,8 +194,7 @@ Critérios de comparação, a medir no spike S3. Nada foi instalado e todo supor
 | Fase da exportação manual | usuário | fácil | F1 | F1 |
 | Licença | usuário | **IRREVERSÍVEL** para cópias já licenciadas | antes de distribuir | nenhuma até decidir |
 | Visibilidade do repositório | usuário | **IRREVERSÍVEL** para cópias públicas | F0 | privado até revisar o histórico |
-| Quem aprova PR | usuário | fácil | F0 | nomear uma pessoa |
-| Quem aprova avanço de fase | usuário | fácil | F0 | nomear uma pessoa |
+| Linha de base na exclusão definitiva | usuário | **IRREVERSÍVEL** para o que for apagado | F4 | manter até a F4 e reavaliar com poucas viagens |
 | Provedor e privacidade da IA | usuário | **IRREVERSÍVEL** para dados enviados | F5 | consentimento e dados mínimos |
 | Limites do BLE | usuário | **IRREVERSÍVEL** para comando enviado | F6 | lista permitida só de leitura |
 
