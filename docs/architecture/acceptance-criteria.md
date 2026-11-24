@@ -13,6 +13,8 @@
 | Divergências entre as duas análises independentes estão consolidadas | tabela do ADR 0002 |
 | Documentos coerentes com o ADR 0001 | revisão por pessoa diferente do autor |
 
+O critério do ADR 0001 "existe uma fixture sintética com a mesma estrutura de colunas" está **atribuído à F1 (T1.18) e ainda não foi cumprido**. A F0 não o declara atendido.
+
 ## F1
 
 | Critério | Verificação |
@@ -108,7 +110,7 @@ Os IDs da análise independente mantêm o significado original. Testes próprios
 
 - Pré-condição: relatório de estrutura do CSV, sem abrir o arquivo real.
 - Passos: comparar cada coluna e metadado com o modelo.
-- Resultado esperado: todo campo é representável, ou fica fora do banco por decisão registrada.
+- Resultado esperado: todo campo é representável, ou fica fora do banco por decisão registrada; a fixture sintética do ADR 0001 não é avaliada aqui, porque pertence à F1 (T1.18).
 
 **T0.6** — Dados reais e segredos
 
@@ -163,8 +165,8 @@ Os IDs da análise independente mantêm o significado original. Testes próprios
 **T1.8** — Moto persiste
 
 - Pré-condição: banco vazio.
-- Passos: criar, editar, fechar e reabrir.
-- Resultado esperado: os valores editados permanecem.
+- Passos: criar com e sem apelido digitado, editar, fechar e reabrir.
+- Resultado esperado: os valores editados permanecem e o apelido é opcional.
 
 **T1.9** — Custo e moeda
 
@@ -274,7 +276,7 @@ Os IDs da análise independente mantêm o significado original. Testes próprios
 
 - Pré-condição: uma viagem por estado.
 - Passos: aplicar todos os eventos da tabela em todos os estados.
-- Resultado esperado: só as transições listadas mudam o estado; as demais devolvem `invalid_transition`.
+- Resultado esperado: só as transições listadas mudam o estado; as demais devolvem `invalid_transition`, e o banco as recusa mesmo em acesso direto; `finished` e `cancelled` são finais.
 
 **T2.10** — Distância e cobertura
 
@@ -298,7 +300,7 @@ Os IDs da análise independente mantêm o significado original. Testes próprios
 
 - Pré-condição: viagem encerrada com pontos e outra viagem.
 - Passos: tentar alterar, apagar e substituir um ponto; repetir com autorização da primeira.
-- Resultado esperado: sem autorização tudo é recusado; com ela só os pontos da primeira são apagados e o registro fica permanente.
+- Resultado esperado: sem autorização tudo é recusado; com ela só os pontos da primeira e seus derivados são apagados, ponto novo e reabertura são recusados e o registro fica permanente.
 
 ### F3
 
@@ -360,7 +362,7 @@ Os IDs da análise independente mantêm o significado original. Testes próprios
 
 - Pré-condição: sessão importada.
 - Passos: calcular duas vezes com o mesmo método e uma com método novo.
-- Resultado esperado: sem duplicata; a versão antiga permanece; oficial, roda e Rideology aparecem separadas.
+- Resultado esperado: sem duplicata; a versão antiga permanece e não pode ser substituída; oficial, roda e Rideology aparecem separadas.
 
 **T3.11** — GPS do CSV
 
@@ -394,15 +396,15 @@ Os IDs da análise independente mantêm o significado original. Testes próprios
 
 **T3.16** — Identidade só no bruto
 
-- Pré-condição: fixture com nome e apelido sentinela no preâmbulo, no comentário e no nome do arquivo.
+- Pré-condição: moto com apelido digitado no aplicativo e fixture com outro nome e outro apelido sentinela no preâmbulo, no comentário e no nome do arquivo.
 - Passos: importar, forçar erro, exportar, gerar entrada de relatório e buscar as sentinelas.
-- Resultado esperado: aparecem só no arquivo bruto local.
+- Resultado esperado: aparecem só no arquivo bruto local, e o apelido digitado não muda.
 
 **T3.17** — Exclusão de importação
 
 - Pré-condição: duas importações com derivados.
 - Passos: tentar alterar e apagar; autorizar sem a frase; autorizar corretamente a primeira; matar o processo no meio; concluir.
-- Resultado esperado: só a autorizada some, com arquivo, registro permanente e contagem correta; a outra fica intacta.
+- Resultado esperado: só a autorizada some, com arquivo, derivados, registro permanente e contagem correta; dado novo no alvo é recusado e a outra fica intacta.
 
 **T3.18** — Sessão sem fuso
 
@@ -582,7 +584,7 @@ Constantes não são tratadas como medição confirmada nem como ausência presu
 | Metadado ou fato | Onde fica | Resultado |
 |---|---|---|
 | UserAccount Name | só no arquivo bruto | fora do banco por D3 |
-| Vehicle Nickname | só no arquivo bruto | fora do banco por D3 |
+| Vehicle Nickname | só no arquivo bruto | fora do banco por D3; `motorcycle.nickname` é digitado e independente |
 | Title | `metadata_json.title` e `started_local` | representado; sem fuso, precisão de 60 s |
 | Comment | `metadata_json.comment` | representado; omitido se contiver identidade |
 | Distance(km) | `metadata_json.distance_km` e `distance_rideology` | representado, comparativo |
@@ -591,11 +593,63 @@ Constantes não são tratadas como medição confirmada nem como ausência presu
 | Encoding CP932 e vírgula como delimitador | `telemetry_parse_run` | representado por leitura |
 | Decimal diferente por coluna | `decimal_rules_json` | representado |
 | Sem instante absoluto por linha | `recorded_at` ausente com motivo | representado |
-| Lacuna de 203 s | diferença de `elapsed_ms` | representada, não interpolada |
+| Lacuna de 203 s | diferença entre `elapsed_ms` consecutivos | calculável, não interpolada; nenhuma linha é inventada para o intervalo |
 | Coordenadas repetidas, sem precisão | `gps_evaluation` | regra própria para o CSV |
 
-Resultado: T0.5 passa na estrutura. Não foram verificados os valores nem a existência de outros formatos.
+Resultado: T0.5 passa na estrutura. A fixture sintética exigida pelo ADR 0001 **ainda não existe**: está atribuída à F1 (T1.18) e o critério não está cumprido. Não foram verificados os valores nem a existência de outros formatos.
 
 ## Execução de T0.1 e T0.3
 
 A conferência de T0.1 extrai os IDs de `requirements.md`, compara cada linha com a matriz, exige definição única de cada teste e exige que todo teste definido apareça na matriz. A de T0.3 extrai os blocos `sql` sem alteração, em banco temporário.
+
+## Correspondência com a análise independente
+
+Todos os 45 testes originais mantêm o ID. Um deles não mantém o significado por inteiro.
+
+| Original | Enunciado original | ID final | Título final | Mesmo significado |
+|---|---|---|---|---|
+| T0.1 | cada requisito tem ID, fase e teste | T0.1 | Rastreabilidade | sim |
+| T0.2 | cada decisão tem dono e reversibilidade | T0.2 | Decisões | sim |
+| T0.3 | um implementador cria o esquema sem perguntar | T0.3 | Esquema sem perguntas | sim |
+| T0.4 | cada item da l.25 existe | T0.4 | Entregáveis | sim |
+| T0.5 | confrontar o modelo com o CSV real | T0.5 | Confronto com a estrutura do CSV | não: o original confronta com o CSV real; o final usa o relatório de estrutura, porque o arquivo não é aberto nem versionado |
+| T0.6 | varrer segredos/dados pessoais no histórico | T0.6 | Dados reais e segredos | sim |
+| T1.1 | salvar e matar o processo em seguida | T1.1 | Morte após salvar | sim |
+| T1.2 | instalação limpa em modo avião com reboot | T1.2 | Instalação limpa sem rede | sim |
+| T1.3 | matar durante migração | T1.3 | Morte durante migração | sim |
+| T1.4 | disco cheio | T1.4 | Disco cheio | sim |
+| T1.5 | migrar de cada versão anterior | T1.5 | Migração de cada versão | sim |
+| T1.6 | odômetro regressivo | T1.6 | Odômetro regressivo | sim |
+| T1.7 | demonstração não contamina dados reais | T1.7 | Demonstração não contamina | sim |
+| T2.1 | kill -9 em cada estado e medir pontos perdidos | T2.1 | Morte em cada estado | sim; acrescenta limite [PROPOSTA] |
+| T2.2 | reboot na viagem | T2.2 | Reinício na viagem | sim |
+| T2.3 | revogar permissão | T2.3 | Permissão revogada | sim |
+| T2.4 | 2 h com tela apagada em modo economia, medindo lacunas e bateria | T2.4 | Tela apagada em economia | sim |
+| T2.5 | injetar salto de 10 km | T2.5 | Salto de 10 km | sim |
+| T2.6 | pausar/retomar 20x sem duplicar | T2.6 | Pausar e retomar 20 vezes | sim |
+| T2.7 | mudar o relógio +-1 h | T2.7 | Relógio alterado | sim |
+| T3.1 | sha256 do original igual antes/depois | T3.1 | Hash do original | sim |
+| T3.2 | reimportar e renomear: zero duplicatas | T3.2 | Reimportar e renomear | sim |
+| T3.3 | matriz encoding x delimitador x decimal | T3.3 | Matriz de formatos | sim |
+| T3.4 | remover cada coluna: métrica fica ausente, não 0 | T3.4 | Coluna removida | sim |
+| T3.5 | matar no meio: nada parcial visível | T3.5 | Morte durante importação | sim |
+| T3.6 | arquivo grande sem travar a UI | T3.6 | Arquivo grande | sim; acrescenta limite [PROPOSTA] |
+| T3.7 | conferir métricas contra cálculo independente com tolerância definida | T3.7 | Cálculo independente | sim; tolerância [PROPOSTA] |
+| T4.1 | histórico com 0/1/N viagens | T4.1 | Histórico 0, 1 e N | sim |
+| T4.2 | anomalia sintética e ruído (medir falsos positivos) | T4.2 | Anomalia e ruído | sim |
+| T4.3 | nenhum texto afirma falha | T4.3 | Nenhuma afirmação de falha | sim |
+| T4.4 | trocar o algoritmo preserva o resultado versionado | T4.4 | Troca de algoritmo | sim |
+| T4.5 | sensor preso em valor constante | T4.5 | Sensor constante | sim |
+| T5.1 | citação inexistente rejeitada | T5.1 | Citação inexistente | sim |
+| T5.2 | número fora da entrada rejeitado | T5.2 | Número fora da entrada | sim |
+| T5.3 | injeção em nota | T5.3 | Injeção em nota | sim |
+| T5.4 | offline degrada sem erro | T5.4 | Sem rede | sim |
+| T5.5 | capturar o payload e provar ausência de coordenadas sem consentimento | T5.5 | Conteúdo enviado | sim |
+| T6.1 | registro HCI sem operação fora da lista permitida | T6.1 | Registro HCI | sim |
+| T6.2 | porta sem método de escrita | T6.2 | Porta sem escrita | sim |
+| T6.3 | moto desligada, desconexão e app oficial conectado | T6.3 | Falhas de conexão | sim |
+| T6.4 | fallback CSV | T6.4 | Alternativa por CSV | sim |
+| T7.1 | backup -> desinstalar -> restaurar com contagem e hash iguais | T7.1 | Backup e restauração | sim |
+| T7.2 | exportação reimportável | T7.2 | Exportação reimportável | sim |
+| T7.3 | excluir dados remove rastros locais | T7.3 | Rastros após exclusão | sim |
+| T7.4 | logs sem coordenadas | T7.4 | Logs | sim |

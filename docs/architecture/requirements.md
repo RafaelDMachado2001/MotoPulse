@@ -6,7 +6,7 @@ A coluna Teste coincide com a matriz de `acceptance-criteria.md`.
 
 | ID | Descrição verificável | Fase | Teste |
 |---|---|---|---|
-| RF-01 | Criar e editar uma motocicleta e reencontrá-la após reabrir o aplicativo | F1 | T1.8 |
+| RF-01 | Criar e editar uma motocicleta, com apelido opcional digitado no aplicativo, e reencontrá-la após reabrir o aplicativo | F1 | T1.8 |
 | RF-02 | Registrar manutenção, com custo e moeda juntos ou com motivo de ausência | F1 | T1.9 |
 | RF-03 | Registrar itens ligados a um registro de manutenção | F1 | T1.10 |
 | RF-04 | Criar plano por distância e/ou tempo e vincular sua execução a um registro | F1 | T1.11 |
@@ -40,13 +40,13 @@ A coluna Teste coincide com a matriz de `acceptance-criteria.md`.
 |---|---|---|---|
 | RNF-01 | SQLite local é a fonte de verdade e nenhuma transação expõe estado parcial | F1 | T1.4, T1.17, T3.5 |
 | RNF-02 | UUID, UTC com offset, unidades canônicas e ausência com motivo | F0 e F1 | T0.3, T1.16 |
-| RNF-03 | Bruto imutável e derivado recalculável e versionado | F3 | T3.1, T3.15 |
+| RNF-03 | Bruto imutável e derivado recalculável e versionado, sem substituição | F3 | T3.1, T3.15 |
 | RNF-04 | Dados reais não entram no Git; fixtures sintéticas entram | F0 | T0.6, T1.18 |
 | RNF-05 | Nenhuma operação de escrita em ECU, ABS, KTRC ou painel | F6 | T6.1, T6.2 |
 | RNF-06 | Registro confirmado sobrevive à morte do processo e à reabertura | F1 | T1.1 |
 | RNF-07 | Capacidades locais funcionam sem rede | F1 | T1.2, T1.15 |
 | RNF-08 | Exclusão e alteração de bruto são barradas por padrão | F2 e F3 | T2.14, T3.17 |
-| RNF-09 | Nome de usuário e apelido do veículo não saem do arquivo bruto; logs não têm coordenadas | F3 | T3.16, T7.4 |
+| RNF-09 | Nome de usuário e apelido do veículo do CSV não saem do arquivo bruto; logs não têm coordenadas | F3 | T3.16, T7.4 |
 | RNF-10 | Migração é transacional e parte de qualquer versão anterior | F1 | T1.3, T1.5 |
 | RNF-11 | Importar arquivo grande não trava a interface | F3 | T3.6 |
 | RNF-12 | Gravação com tela apagada respeita as metas de lacuna e bateria | F2 | T2.4 |

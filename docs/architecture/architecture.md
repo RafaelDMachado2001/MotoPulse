@@ -68,15 +68,15 @@ Toda operação devolve resultado ou erro tipado, sem exceção como fluxo norma
 |---|---|---|---|
 | `create` | moto e origem | viagem `draft` | `demo_mismatch` |
 | `transition` | viagem e evento da tabela de estados | viagem e segmento aberto, se houver | `invalid_transition`, `trip_already_active` |
-| `appendPoints` | segmento e lote ordenado de pontos | quantidade gravada | `duplicate_sequence`, `segment_closed` |
+| `appendPoints` | segmento e lote ordenado de pontos | quantidade gravada | `duplicate_sequence`, `segment_closed`, `deletion_in_progress` |
 | `findRecoverable` | moto | viagem aberta encontrada, ou nada | — |
 
 ### TelemetryPort
 
 | Operação | Entrada | Saída | Erros próprios |
 |---|---|---|---|
-| `registerImport` | moto, hash, tamanho, nome tratado | importação nova ou já existente | `hash_owned_by_other_motorcycle` |
-| `saveParse` | importação, versão do parser, sessão, amostras, problemas | leitura final | `already_parsed`, `identity_not_allowed` |
+| `registerImport` | moto, hash, tamanho, nome tratado | importação nova ou já existente | `hash_owned_by_other_motorcycle`, `demo_mismatch` |
+| `saveParse` | importação, versão do parser, sessão, amostras, problemas | leitura final | `already_parsed`, `identity_not_allowed`, `deletion_in_progress` |
 | `linkTrip` | sessão e viagem, ou nenhuma | sessão | `motorcycle_mismatch` |
 | `readSamples` | sessão e intervalo de `elapsed_ms` | amostras ordenadas | — |
 
@@ -102,8 +102,8 @@ Eventos do fluxo: `point`, `permission_revoked`, `location_disabled`, `signal_lo
 
 | Operação | Entrada | Saída | Erros próprios |
 |---|---|---|---|
-| `evaluateGps` | viagem ou sessão e versão da regra | avaliações | `unknown_rule_version` |
-| `calculate` | escopo, tipo, versão do método | métrica com valor ou motivo, cobertura e evidência | `unknown_method_version` |
+| `evaluateGps` | viagem ou sessão e versão da regra | avaliações | `unknown_rule_version`, `deletion_in_progress` |
+| `calculate` | escopo, tipo, versão do método | métrica com valor ou motivo, cobertura e evidência | `unknown_method_version`, `deletion_in_progress` |
 | `compareWithBaseline` | métrica e versão da linha de base | achados | `insufficient_history` |
 
 Recalcular a mesma entrada com o mesmo método devolve o resultado existente.
@@ -149,7 +149,7 @@ Recalcular a mesma entrada com o mesmo método devolve o resultado existente.
 | `draft` | `cancel` | confirmação | `cancelled` | não apaga nada |
 | `recording`, `paused`, `interrupted` | `cancel` | confirmação | `cancelled` | fecha segmento; pontos permanecem |
 
-`finished` e `cancelled` são finais. Evento repetido, como dois toques em iniciar, devolve `invalid_transition` sem efeito. Entre segmentos nunca há distância.
+`finished` e `cancelled` são finais. O banco recusa as transições fora da tabela (`trip_transition`); guardas e efeitos são do aplicativo. Evento repetido, como dois toques em iniciar, devolve `invalid_transition` sem efeito. Entre segmentos nunca há distância.
 
 ## Gravação do GPS
 
@@ -163,7 +163,7 @@ A amostragem é adaptativa: 1 s em movimento e 5 s parado [PROPOSTA]. Parada é 
 2. Detectar, por arquivo, encoding e delimitador, e por coluna o separador decimal. O arquivo observado é CP932, com vírgula como delimitador, vírgula decimal entre aspas em latitude e longitude e ponto nas demais colunas.
 3. Ler o preâmbulo. No arquivo observado são sete linhas de metadados e o cabeçalho na oitava; outros arquivos podem diferir e não são rejeitados só por isso.
 4. Guardar o texto de cada célula e normalizar as colunas conhecidas. Colunas desconhecidas seguem em `raw_values_json`, exceto as de identidade; o que não puder ser interpretado vira ausente com motivo.
-5. Omitir nome de usuário e apelido do veículo em tudo que sai do arquivo bruto.
+5. Omitir nome de usuário e apelido do veículo em tudo que sai do arquivo bruto. O apelido do cadastro nunca é preenchido nem sugerido a partir deles.
 6. Gravar sessão, amostras e problemas em uma transação. Cancelamento ou falha não deixa nada parcial visível.
 
 ## Offline
