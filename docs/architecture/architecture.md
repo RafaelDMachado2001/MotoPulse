@@ -1,26 +1,46 @@
 # Arquitetura
 
-## Princípios
+## Camadas, módulos e portas
 
-MotoPulse é Android offline-first para a Kawasaki Ninja ZX-4R 2026. O SQLite local é a fonte de verdade; sincronização, backup criptografado e BLE permanecem posteriores. Dados brutos são imutáveis, derivados são recalculáveis e versionados.
+`domain` contém entidades, invariantes, estados e cálculos puros; `application` orquestra casos de uso; `adapters` implementa SQLite/migrations, filesystem, GPS, Rideology e relatórios; `ui` é React Native/TypeScript e só chama casos de uso. Módulos: garage, maintenance, trips, telemetry, analytics e reports. A UI não acessa SQLite diretamente.
 
-## Camadas e portas
+Portas: `TripRepository` (criar, transicionar, lotear pontos, recuperar); `TelemetryRepository` (imports/sessões/amostras/issues); `MaintenanceRepository` (registros/itens/planos/odômetro); `LocationPort` (permissão, iniciar/parar, stream); `ImportPort` (bytes, hash, parse e issues); `MetricPort` (calcular/versionar); `ReportPort` (estrutura/evidência/incerteza); `Clock` (UTC e monotônico). Cada porta recebe tipos de domínio, retorna resultado/erro explícito, é transacional quando altera estado e não expõe SQL à UI.
 
-- `domain`: entidades, value objects, invariantes, máquina de estados e cálculo determinístico; não conhece React Native nem SQLite.
-- `application`: casos de uso transacionais e portas (`TripRepository`, `TelemetryRepository`, `LocationPort`, `ImportPort`, `ReportPort`, `Clock`).
-- `adapters`: SQLite/migrations, filesystem, GPS, importador Rideology, relatórios e futuros BLE/IA; implementa portas, sem lógica de apresentação.
-- `ui`: React Native/TypeScript, navegação, permissões e estados de tela; nunca acessa banco diretamente.
+## Fluxo de dados
 
-Fluxo: UI → caso de uso → porta → adaptador SQLite/GPS/arquivo; eventos persistidos retornam à UI. Importação é `bytes + SHA-256 → cópia bruta imutável → detecção/parsing → normalização em transação → issues e métricas`; nenhuma coluna desconhecida é inventada. Relatórios consomem métricas estruturadas e evidências.
+```text
+React Native UI -> casos application -> portas
+      |                                |-> SQLite (fonte local)
+      |                                |-> GPS -> location_point -> métricas
+arquivo Rideology -> hash/cópia bruta -> parser -> issues/samples -> métricas
+      métricas + evidências -> relatório -> UI
+```
 
-## Viagem
+Bruto é imutável; derivados são recalculáveis/versionados. Offline cobre cadastro, manutenção, viagem, GPS, importação local, métricas e relatórios locais.
 
-`draft → recording → paused ↔ recording → finished`; interrupção inesperada na abertura vira `interrupted`, podendo ser recuperada para `recording` ou encerrada. Cada segmento registra início/fim e pontos com sequência. Distância oficial usa apenas GPS válido, sem interpolar lacunas; roda e Rideology são comparativas (ADR 0001). Associação com sessão Rideology é opcional nos dois lados.
+## Máquina de viagem
 
-## Repositório e testes
+| Estado | Evento | Guarda | Efeito |
+|---|---|---|---|
+| draft | start | moto válida/permissão | cria segmento, inicia gravação |
+| recording | pause | viagem aberta | fecha segmento, paused |
+| paused | resume | permissão disponível | novo segmento, recording |
+| recording/paused | process_killed | detectado na abertura | interrupted, preserva pontos |
+| interrupted | recover | confirmação | novo segmento, recording |
+| interrupted | finish | confirmação | finished, fecha tempos |
+| recording/paused | finish | viagem aberta | finished, persiste resumo |
+| qualquer não final | cancel | confirmação | cancelled, não apaga bruto |
 
-`src/{domain,application,adapters,ui}`, `tests/` (unitários, integração SQLite/importação, contrato e cenários de ciclo de vida), `docs/architecture` e `docs/decisions`. Migrations usam transação, `foreign_keys=ON`, WAL e `integrity_check`; fixtures são sintéticas/anonimizadas e CSV real nunca entra no Git.
+GPS é gravado em lotes de até 5 s ou 20 pontos (primeiro limite), com transação por lote; perda máxima proposta em morte do processo é 5 s, a verificar no spike. Pontos inválidos persistem para auditoria mas não entram na distância oficial.
 
-## Spikes antes da F1
+## Spikes pré-F1 (documentar, não executar nesta fase)
 
-Documentar (não executar nesta fase): GPS com tela apagada no Galaxy S25 Ultra; estrutura/encoding/unidades do CSV com fixture sintética. Não há escrita em ECU, ABS, KTRC ou painel.
+| Spike | Pergunta | Método | Sucesso | Limite |
+|---|---|---|---|---|
+| GPS tela apagada | Galaxy S25 Ultra mantém stream? | foreground/background, permissões, economia, bateria e lacunas | pontos dentro da meta a definir sem morte do serviço | 1 sessão, 2 h |
+| CSV sintético | quais encoding/delimitador/decimal e estrutura? | matriz de fixtures sintéticas; colunas reais ficam [A VERIFICAR] | parser identifica formato e marca desconhecidos | 1 dia |
+| SQLite volume | lotes preservam latência? | fixture sintética, transação e integrity_check | sem estado parcial e UI responsiva | 1 dia |
+
+## Testes e estrutura
+
+`src/{domain,application,adapters,ui}`, `tests/{unit,integration,fixtures}` (fixtures sintéticas permitidas), docs. Testar invariantes, migrations transacionais, ciclo de vida, hash, ausência/unidades e contratos de portas. SQLite usa `foreign_keys=ON`, WAL e `integrity_check`; não há BLE nem escrita em ECU/ABS/KTRC/painel.

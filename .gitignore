@@ -17,4 +17,6 @@ android/.cxx/
 *.fit
 *.log
 coverage/
-!.fixtures/**/*.csv
+!tests/
+!tests/fixtures/
+!tests/fixtures/**/*.csv
