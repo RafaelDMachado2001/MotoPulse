@@ -28,7 +28,7 @@ Usada em todas as decisões deste documento.
 - **Decisão:** esses trechos ficam fora da distância oficial, sem interpolação e com a cobertura mostrada. Havendo GPS do aplicativo e do CSV, o do aplicativo tem prioridade.
 - **Data:** 2026-11-24.
 - **Alternativas:** interpolar; usar o GPS do CSV só como comparação; combinar as fontes.
-- **Consequência:** a distância oficial pode ser menor que a percorrida, e a cobertura explica por quê. Sem GPS do aplicativo, o do CSV pode compor a distância oficial. A prioridade é lida por viagem inteira: o CSV não completa lacunas do aplicativo. Os limiares continuam [PROPOSTA] ou [A VERIFICAR].
+- **Consequência:** a distância oficial pode ser menor que a percorrida, e a cobertura explica por quê. Sem GPS do aplicativo, o do CSV pode compor a distância oficial. A prioridade vale para a viagem inteira: o CSV não completa lacunas do aplicativo. Os limiares continuam [PROPOSTA] ou [A VERIFICAR].
 - **Reversibilidade:** moderada; a validade é derivada e recalculável.
 - **Dono:** usuário.
 
@@ -37,16 +37,16 @@ Usada em todas as decisões deste documento.
 - **Decisão:** bloqueada por padrão; definitiva só com confirmação explícita.
 - **Data:** 2026-11-24.
 - **Alternativas:** exclusão em cascata; nunca permitir exclusão.
-- **Consequência:** gatilhos barram alteração e exclusão, e `raw_deletion` registra a autorização e o resultado de forma permanente. Retenção por prazo segue aberta.
+- **Consequência:** gatilhos barram alteração e exclusão, e `raw_deletion` registra a autorização e o resultado de forma permanente. Com autorização aberta, o alvo não recebe dado novo. Derivados só podem ser apagados junto com o alvo; a linha de base, agregada, permanece. Retenção por prazo segue aberta.
 - **Reversibilidade:** a política é moderada; cada exclusão executada é **IRREVERSÍVEL**.
 - **Dono:** usuário.
 
-### D3 — Nome de usuário e apelido do veículo
+### D3 — Nome de usuário e apelido do veículo do CSV
 
 - **Decisão:** ficam só no arquivo bruto local; fora de banco, inclusive `metadata_json`, de logs, de exportação e de IA.
 - **Data:** 2026-11-24.
 - **Alternativas:** guardar no banco e ocultar na interface; remover também do bruto, o que quebraria o hash.
-- **Consequência:** o banco aceita apenas metadados de uma lista permitida. O cadastro da moto não tem apelido, por leitura literal desta decisão. O arquivo bruto não é exportado com identidade.
+- **Consequência:** o banco aceita apenas metadados de uma lista permitida. O cadastro da moto tem apelido opcional, digitado no aplicativo, que nunca é preenchido a partir do CSV. O arquivo bruto não é exportado com identidade.
 - **Reversibilidade:** a regra é fácil de mudar; um vazamento é **IRREVERSÍVEL**.
 - **Dono:** usuário.
 
@@ -110,7 +110,7 @@ Usada em todas as decisões deste documento.
 
 ### A8 — Bruto imutável e derivado versionado
 
-- **Decisão:** preservar bytes e hash único; cada leitura registra a versão do parser; derivados recalculáveis.
+- **Decisão:** preservar bytes; `source_hash` é único no banco inteiro, confirmado pelo usuário em 2026-11-24; cada leitura registra a versão do parser; derivados recalculáveis.
 - **Alternativas:** hash por moto; sobrescrever ao reimportar; guardar só o normalizado.
 - **Consequência:** mais armazenamento, com auditoria e recálculo possíveis.
 - **Reversibilidade:** **IRREVERSÍVEL** se os bytes não forem preservados desde a primeira importação.
